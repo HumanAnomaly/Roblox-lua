@@ -1,10 +1,18 @@
 --========================================================--
---  ha-ui v3  |  HumanAnomaly UI library
---  Satu window tunggal. Universal + script game menumpuk
---  tab di window yang sama (game script = isi Content).
+--  ha-ui v3.2  |  HumanAnomaly UI library
+--  Satu window tunggal. Sidebar ada switch scope UNIVERSAL
+--  vs <GAME>: grup tab ditentukan dari Sub di Lib.Create.
+--  Universal selalu ada (jalan di semua game), tab script
+--  game masuk grup sendiri dan muncul saat script-nya load.
+--
+--  Prinsip: fungsi dulu. Palet netral polos (abu-abu tanpa
+--  tint warna), satu aksen (putih) yang HANYA dipakai untuk
+--  menandai state: toggle ON, isi slider, tab aktif, tombol
+--  utama. Success/Warning/Danger cuma untuk teks status.
+--  Tanpa gradien, glow, atau animasi dekoratif.
 --
 --  API:
---    Lib.Create{ Title, Sub, Discord, Folder }
+--    Lib.Create{ Title, Sub, Discord, Folder }  <- Sub = nama scope
 --    win:Tab(name) -> tab (tab.Key unik, untuk RemoveTab)
 --    tab:Section(text) / tab:Note(text) / tab:Label(fnOrText)
 --    tab:KV(label, fnOrText)          <- info compact, tanpa card
@@ -19,7 +27,6 @@
 --========================================================--
 
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local LP = Players.LocalPlayer
@@ -28,27 +35,27 @@ local Lib = {
     Toggles = {},
     Dropdowns = {},
     PanicHandlers = {},
-    Version = "3.0",
+    Version = "3.2",
 }
 
 --================ Theme + design constants ================--
 local Theme = {
-    Background      = Color3.fromRGB(15, 15, 21),
-    Surface         = Color3.fromRGB(22, 22, 31),
-    SurfaceSecondary= Color3.fromRGB(30, 30, 43),
-    SurfaceHover    = Color3.fromRGB(40, 40, 57),
-    Input           = Color3.fromRGB(18, 18, 26),
-    Border          = Color3.fromRGB(50, 50, 70),
-    Text            = Color3.fromRGB(235, 235, 243),
-    TextSecondary   = Color3.fromRGB(148, 148, 170),
-    Accent          = Color3.fromRGB(122, 92, 248),
-    AccentDark      = Color3.fromRGB(88, 62, 198),
-    Success         = Color3.fromRGB(88, 219, 132),
-    Warning         = Color3.fromRGB(244, 186, 66),
-    Danger          = Color3.fromRGB(242, 95, 95),
+    Background      = Color3.fromRGB(16, 16, 16),
+    Surface         = Color3.fromRGB(26, 26, 26),
+    SurfaceSecondary= Color3.fromRGB(34, 34, 34),
+    SurfaceHover    = Color3.fromRGB(44, 44, 44),
+    Input           = Color3.fromRGB(21, 21, 21),
+    Border          = Color3.fromRGB(48, 48, 48),
+    Text            = Color3.fromRGB(230, 230, 230),
+    TextSecondary   = Color3.fromRGB(150, 150, 150),
+    Accent          = Color3.fromRGB(230, 230, 230), -- state ON / aktif / tombol utama
+    AccentText      = Color3.fromRGB(20, 20, 20),    -- teks di atas permukaan Accent
+    Success         = Color3.fromRGB(106, 190, 130),
+    Warning         = Color3.fromRGB(226, 178, 88),
+    Danger          = Color3.fromRGB(224, 100, 100),
 }
-local Spacing = { XS = 4, SM = 8, MD = 12, LG = 18 }
-local Radius = { Small = 6, Medium = 10 }
+local Spacing = { XS = 4, SM = 8, MD = 12 }
+local RADIUS = 6 -- satu radius buat semuanya
 
 --================ Responsive dasar ================--
 local cam = workspace.CurrentCamera
@@ -65,17 +72,11 @@ local function New(class, props)
 end
 
 local function Corner(p, r)
-    return New("UICorner", { CornerRadius = UDim.new(0, r or Radius.Small), Parent = p })
+    return New("UICorner", { CornerRadius = UDim.new(0, r or RADIUS), Parent = p })
 end
 
 local function Stroke(p, col, th)
     return New("UIStroke", { Color = col or Theme.Border, Thickness = th or 1, Parent = p })
-end
-
-local function Tween(o, goal, d)
-    local tw = TweenService:Create(o, TweenInfo.new(d or 0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), goal)
-    tw:Play()
-    return tw
 end
 
 -- Drag handle generik, dengan clamp ke layar
@@ -111,6 +112,15 @@ local function MakeDraggable(handle, target, clampToScreen)
 end
 
 --================ Root window ================--
+-- Bersihkan window sisa eksekusi sebelumnya (re-execute tanpa rejoin)
+pcall(function()
+    local holders = { (gethui and gethui()) or CoreGui, LP:FindFirstChild("PlayerGui") }
+    for _, holder in ipairs(holders) do
+        local old = holder and holder:FindFirstChild("HA_UI_v3")
+        if old then old:Destroy() end
+    end
+end)
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "HA_UI_v3"
 gui.ResetOnSpawn = false
@@ -130,7 +140,8 @@ local main = New("Frame", {
     Active = true,
     Parent = gui,
 })
-Corner(main, Radius.Medium)
+Corner(main)
+Stroke(main, Theme.Border, 1)
 if isMobile then
     main.Size = UDim2.new(1, -12, 1, -12)
     New("UISizeConstraint", { MaxSize = Vector2.new(660, 520), Parent = main })
@@ -138,19 +149,12 @@ else
     main.Size = UDim2.fromOffset(660, 444)
 end
 
---================ Header ================--
+--================ Header (polos, tanpa surface) ================--
 local header = New("Frame", {
     Size = UDim2.new(1, 0, 0, 52),
-    BackgroundColor3 = Theme.Surface,
+    BackgroundTransparency = 1,
+    Active = true,
     Parent = main,
-})
-Corner(header, Radius.Medium)
-New("Frame", {
-    Size = UDim2.new(1, 0, 0, 12),
-    Position = UDim2.new(0, 0, 1, -12),
-    BackgroundColor3 = Theme.Surface,
-    BorderSizePixel = 0,
-    Parent = header,
 })
 
 local titleLabel = New("TextLabel", {
@@ -161,6 +165,7 @@ local titleLabel = New("TextLabel", {
     TextSize = 15,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextColor3 = Theme.Text,
+    TextTruncate = Enum.TextTruncate.AtEnd,
     Text = "",
     Parent = header,
 })
@@ -177,14 +182,17 @@ local subLabel = New("TextLabel", {
     Parent = header,
 })
 
+-- Posisi status: nempel di kiri tombol paling kiri (MENU di mobile)
+local statusRight = isMobile and -276 or -192
 local statusLabel = New("TextLabel", {
-    Size = UDim2.new(0, 74, 0, 28),
-    Position = UDim2.new(1, -238, 0.5, -14),
+    Size = UDim2.new(0, 96, 0, 28),
+    Position = UDim2.new(1, statusRight, 0.5, -14),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
     TextSize = 11,
     TextXAlignment = Enum.TextXAlignment.Right,
     TextColor3 = Theme.Success,
+    TextTruncate = Enum.TextTruncate.AtEnd,
     Text = "READY",
     Parent = header,
 })
@@ -202,6 +210,8 @@ local menuBtn = New("TextButton", {
     Parent = header,
 })
 Corner(menuBtn)
+menuBtn.MouseEnter:Connect(function() menuBtn.BackgroundColor3 = Theme.SurfaceHover end)
+menuBtn.MouseLeave:Connect(function() menuBtn.BackgroundColor3 = Theme.SurfaceSecondary end)
 
 local hideBtn = New("TextButton", {
     Size = UDim2.fromOffset(76, 28),
@@ -215,6 +225,8 @@ local hideBtn = New("TextButton", {
     Parent = header,
 })
 Corner(hideBtn)
+hideBtn.MouseEnter:Connect(function() hideBtn.BackgroundColor3 = Theme.SurfaceHover end)
+hideBtn.MouseLeave:Connect(function() hideBtn.BackgroundColor3 = Theme.SurfaceSecondary end)
 
 --================ Sidebar / drawer ================--
 local cover = New("TextButton", {
@@ -234,7 +246,7 @@ local side = New("Frame", {
     ZIndex = 10,
     Parent = main,
 })
-Corner(side, Radius.Medium)
+Corner(side)
 if isMobile then
     side.Visible = false -- drawer: buka lewat tombol MENU
 end
@@ -250,6 +262,19 @@ local tabBar = New("ScrollingFrame", {
     Parent = side,
 })
 New("UIListLayout", { Padding = UDim.new(0, 3), Parent = tabBar })
+
+-- Switch scope di atas daftar tab: UNIVERSAL / <GAME>.
+-- Baru muncul kalau grupnya >1 (universal doang = nggak ada yg di-switch)
+local scopeSegs = {}
+local scopeBar = New("Frame", {
+    Size = UDim2.new(1, -12, 0, 0),
+    Position = UDim2.new(0, 6, 0, 6),
+    BackgroundTransparency = 1,
+    Visible = false,
+    ZIndex = 10,
+    Parent = side,
+})
+New("UIListLayout", { Padding = UDim.new(0, 3), Parent = scopeBar })
 
 local pageHolder = New("Frame", {
     Size = isMobile and UDim2.new(1, -16, 1, -68) or UDim2.new(1, -152, 1, -68),
@@ -285,25 +310,107 @@ local showBtn = New("TextButton", {
     Visible = false,
     Parent = gui,
 })
-Corner(showBtn, Radius.Small)
-Stroke(showBtn, Theme.Accent, 1.4)
+Corner(showBtn)
+Stroke(showBtn, Theme.TextSecondary, 1)
 MakeDraggable(showBtn, showBtn, true)
 
 --================ Tab registry ================--
-local W = { Tabs = {}, Discord = "", Folder = "" }
+local W = { Tabs = {}, Scopes = {}, ScopeSet = {}, LastTab = {}, Discord = "", Folder = "" }
 
 local function selectTab(key)
     local target = W.Tabs[key]
     if not target then return end
     for _, t in pairs(W.Tabs) do
         t.Page.Visible = false
-        t.Btn.BackgroundColor3 = Theme.Background
+        t.Btn.BackgroundTransparency = 1
         t.Btn.TextColor3 = Theme.TextSecondary
     end
     target.Page.Visible = true
     target.Btn.BackgroundColor3 = Theme.SurfaceSecondary
+    target.Btn.BackgroundTransparency = 0
     target.Btn.TextColor3 = Theme.Text
+    W.ActiveTab = key
+    W.LastTab[target.Scope] = key
     closeDrawer()
+end
+
+--================ Scope switch (UNIVERSAL / <GAME>) ================--
+local function layoutSide()
+    local h = scopeBar.Visible and scopeBar.Size.Height.Offset or 0
+    tabBar.Position = UDim2.new(0, 6, 0, scopeBar.Visible and (12 + h) or 6)
+    tabBar.Size = UDim2.new(1, -12, 1, scopeBar.Visible and -(18 + h) or -12)
+end
+
+local function paintScopeSegs()
+    local n = #W.Scopes
+    for _, name in ipairs(W.Scopes) do
+        local seg = scopeSegs[name]
+        if seg then
+            local on = name == W.ActiveScope
+            seg.BackgroundColor3 = Theme.SurfaceSecondary
+            seg.BackgroundTransparency = on and 0 or 1
+            seg.TextColor3 = on and Theme.Text or Theme.TextSecondary
+        end
+    end
+    scopeBar.Visible = n > 1
+    scopeBar.Size = UDim2.new(1, -12, 0, n > 1 and (n * 24 + (n - 1) * 3) or 0)
+    layoutSide()
+end
+
+local function selectScope(scope)
+    if not W.ScopeSet[scope] then return end
+    W.ActiveScope = scope
+    paintScopeSegs()
+    for _, t in pairs(W.Tabs) do
+        t.Btn.Visible = t.Scope == scope
+    end
+    local key = W.LastTab[scope]
+    if not (key and W.Tabs[key]) then
+        for _, t in pairs(W.Tabs) do
+            if t.Scope == scope then key = t.Key break end
+        end
+    end
+    if key then selectTab(key) end
+end
+
+local function addScope(name)
+    W.ScopeSet[name] = true
+    W.Scopes[#W.Scopes + 1] = name
+    local seg = New("TextButton", {
+        Size = UDim2.new(1, 0, 0, 24),
+        BackgroundColor3 = Theme.SurfaceSecondary,
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        TextSize = 10,
+        TextColor3 = Theme.TextSecondary,
+        Text = "  " .. name,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        AutoButtonColor = false,
+        ZIndex = 10,
+        Parent = scopeBar,
+    })
+    Corner(seg)
+    scopeSegs[name] = seg
+    seg.MouseButton1Click:Connect(function() selectScope(name) end)
+    paintScopeSegs()
+end
+
+local function removeScope(name)
+    local seg = scopeSegs[name]
+    if seg then
+        seg:Destroy()
+        scopeSegs[name] = nil
+    end
+    W.ScopeSet[name] = nil
+    W.LastTab[name] = nil
+    for i, s in ipairs(W.Scopes) do
+        if s == name then
+            table.remove(W.Scopes, i)
+            break
+        end
+    end
+    paintScopeSegs()
 end
 
 function W:Tab(name)
@@ -314,28 +421,15 @@ function W:Tab(name)
         key = name .. " " .. n
     end
 
-    local btn = New("TextButton", {
-        Size = UDim2.new(1, 0, 0, 36),
-        BackgroundColor3 = Theme.Background,
-        Font = Enum.Font.GothamBold,
-        TextSize = 11,
-        TextColor3 = Theme.TextSecondary,
-        Text = "  " .. name:upper(),
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-        AutoButtonColor = false,
-        ZIndex = 10,
-        Parent = tabBar,
-    })
-    Corner(btn)
-    btn.MouseEnter:Connect(function()
-        Tween(btn, { BackgroundColor3 = Theme.SurfaceHover }, 0.1)
-    end)
-    btn.MouseLeave:Connect(function()
-        local on = page.Visible
-        Tween(btn, { BackgroundColor3 = on and Theme.SurfaceSecondary or Theme.Background }, 0.1)
-    end)
+    -- Scope = pemanggil Create terakhir (proxy bawa __scope dari Lib.Create)
+    local scope = "UNIVERSAL"
+    if type(self) == "table" and type(self.__scope) == "string" and self.__scope ~= "" then
+        scope = self.__scope:upper()
+    end
+    local isNewScope = not W.ScopeSet[scope]
+    if isNewScope then addScope(scope) end
 
+    -- Page dibuat duluan supaya hover tab bisa baca state-nya
     local page = New("ScrollingFrame", {
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
@@ -353,11 +447,33 @@ function W:Tab(name)
         Parent = page,
     })
 
+    local btn = New("TextButton", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundColor3 = Theme.SurfaceSecondary,
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        TextColor3 = Theme.TextSecondary,
+        Text = "  " .. name:upper(),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        AutoButtonColor = false,
+        ZIndex = 10,
+        Parent = tabBar,
+    })
+    Corner(btn)
+    btn.MouseEnter:Connect(function()
+        if not page.Visible then btn.TextColor3 = Theme.Text end
+    end)
+    btn.MouseLeave:Connect(function()
+        if not page.Visible then btn.TextColor3 = Theme.TextSecondary end
+    end)
     btn.MouseButton1Click:Connect(function() selectTab(key) end)
+    btn.Visible = W.ActiveScope == nil or W.ActiveScope == scope
 
     local T = { Key = key }
 
-    -- Row interaktif: satu-satunya bentuk "surface", tanpa border bertumpuk
+    -- Row interaktif: satu-satunya bentuk "surface"
     local function row(height)
         local f = New("Frame", {
             Size = UDim2.new(1, -6, 0, height),
@@ -472,7 +588,7 @@ function W:Tab(name)
 
     function T:Toggle(key, text, desc, default, cb)
         local f = row(desc and 44 or 34)
-        local l = New("TextLabel", {
+        New("TextLabel", {
             Size = UDim2.new(1, -66, 0, 18),
             BackgroundTransparency = 1,
             Font = Enum.Font.GothamBold,
@@ -497,39 +613,45 @@ function W:Tab(name)
                 Parent = f,
             })
         end
-        local track = New("TextButton", {
-            Size = UDim2.fromOffset(54, 26),
-            Position = UDim2.new(1, -54, 0.5, -13),
-            BackgroundColor3 = default and Theme.Accent or Theme.SurfaceHover,
-            Font = Enum.Font.GothamBold,
-            TextSize = 10,
-            TextColor3 = default and Color3.new(1, 1, 1) or Theme.TextSecondary,
-            Text = default and "ON" or "OFF",
-            AutoButtonColor = false,
+        local track = New("Frame", {
+            Size = UDim2.fromOffset(50, 24),
+            Position = UDim2.new(1, -50, 0.5, -12),
+            BackgroundColor3 = Theme.SurfaceHover,
             Parent = f,
         })
         Corner(track)
 
         local state = default or false
         local entry = { Value = state }
+        local function paint(v)
+            track.BackgroundColor3 = v and Theme.Accent or Theme.SurfaceHover
+        end
         function entry:Set(v)
             state = v
-            track.BackgroundColor3 = v and Theme.Accent or Theme.SurfaceHover
-            track.TextColor3 = v and Color3.new(1, 1, 1) or Theme.TextSecondary
-            track.Text = v and "ON" or "OFF"
+            paint(v)
         end
+        paint(state)
         Lib.Toggles[key] = entry
-        track.MouseButton1Click:Connect(function()
+
+        local function flip()
             state = not state
             Lib.Toggles[key].Value = state
             entry:Set(state)
             if cb then task.spawn(cb, state) end
-        end)
+        end
+        -- Satu hit area seluas baris: enak dipakai di HP
+        New("TextButton", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false,
+            Parent = f,
+        }).MouseButton1Click:Connect(flip)
     end
 
     function T:Slider(key, text, min, max, default, cb)
         local f = row(52)
-        local l = New("TextLabel", {
+        New("TextLabel", {
             Size = UDim2.new(1, -70, 0, 16),
             BackgroundTransparency = 1,
             Font = Enum.Font.GothamBold,
@@ -546,17 +668,25 @@ function W:Tab(name)
             Font = Enum.Font.GothamBold,
             TextSize = 12,
             TextXAlignment = Enum.TextXAlignment.Right,
-            TextColor3 = Theme.Accent,
+            TextColor3 = Theme.Text,
             Text = tostring(default),
             Parent = f,
         })
-        local track = New("TextButton", {
-            Size = UDim2.new(1, 0, 0, 6),
-            Position = UDim2.new(0, 0, 0, 30),
-            BackgroundColor3 = Theme.Input,
+        -- Hit area 22px berisi bar visual 6px: akurat di mouse, bisa di HP
+        local hit = New("TextButton", {
+            Size = UDim2.new(1, 0, 0, 22),
+            Position = UDim2.new(0, 0, 0, 26),
+            BackgroundTransparency = 1,
             Text = "",
             AutoButtonColor = false,
             Parent = f,
+        })
+        local track = New("Frame", {
+            Size = UDim2.new(1, 0, 0, 6),
+            Position = UDim2.new(0, 0, 0.5, -3),
+            BackgroundColor3 = Theme.Input,
+            BorderSizePixel = 0,
+            Parent = hit,
         })
         Corner(track, 3)
         local fill = New("Frame", {
@@ -574,13 +704,13 @@ function W:Tab(name)
         end
         local sliding = false
         local function setFromX(x)
-            local abs = track.AbsolutePosition.X
-            local w = math.max(1, track.AbsoluteSize.X)
+            local abs = hit.AbsolutePosition.X
+            local w = math.max(1, hit.AbsoluteSize.X)
             val = math.floor(min + math.clamp((x - abs) / w, 0, 1) * (max - min) + 0.5)
             paint()
             if cb then task.spawn(cb, val) end
         end
-        track.InputBegan:Connect(function(input)
+        hit.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 sliding = true
                 setFromX(input.Position.X)
@@ -675,7 +805,7 @@ function W:Tab(name)
             for _, o in ipairs(options) do
                 local on = o.Name == current
                 o.Btn.BackgroundColor3 = on and Theme.Accent or Theme.SurfaceSecondary
-                o.Btn.TextColor3 = on and Color3.new(1, 1, 1) or Theme.TextSecondary
+                o.Btn.TextColor3 = on and Theme.AccentText or Theme.TextSecondary
             end
         end
 
@@ -691,6 +821,7 @@ function W:Tab(name)
                     TextColor3 = Theme.TextSecondary,
                     Text = "  " .. name,
                     TextXAlignment = Enum.TextXAlignment.Left,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
                     AutoButtonColor = false,
                     Parent = list,
                 })
@@ -734,34 +865,47 @@ function W:Tab(name)
             b.BackgroundColor3 = Theme.Background
             b.TextColor3 = Theme.Danger
             Stroke(b, Theme.Danger, 1)
-            b.MouseEnter:Connect(function() Tween(b, { BackgroundColor3 = Color3.fromRGB(52, 28, 32) }, 0.1) end)
-            b.MouseLeave:Connect(function() Tween(b, { BackgroundColor3 = Theme.Background }, 0.1) end)
+            b.MouseEnter:Connect(function() b.BackgroundColor3 = Color3.fromRGB(40, 25, 25) end)
+            b.MouseLeave:Connect(function() b.BackgroundColor3 = Theme.Background end)
         elseif style == "accent" then
             b.BackgroundColor3 = Theme.Accent
-            b.TextColor3 = Color3.new(1, 1, 1)
-            b.MouseEnter:Connect(function() Tween(b, { BackgroundColor3 = Theme.AccentDark }, 0.1) end)
-            b.MouseLeave:Connect(function() Tween(b, { BackgroundColor3 = Theme.Accent }, 0.1) end)
+            b.TextColor3 = Theme.AccentText
+            b.MouseEnter:Connect(function() b.BackgroundColor3 = Color3.fromRGB(255, 255, 255) end)
+            b.MouseLeave:Connect(function() b.BackgroundColor3 = Theme.Accent end)
         elseif style == "ghost" then
             b.BackgroundColor3 = Theme.Background
             b.TextColor3 = Theme.TextSecondary
             Stroke(b, Theme.Border, 1)
-            b.MouseEnter:Connect(function() b.TextColor3 = Theme.Text Tween(b, { BackgroundColor3 = Theme.Surface }, 0.1) end)
-            b.MouseLeave:Connect(function() b.TextColor3 = Theme.TextSecondary Tween(b, { BackgroundColor3 = Theme.Background }, 0.1) end)
+            b.MouseEnter:Connect(function()
+                b.TextColor3 = Theme.Text
+                b.BackgroundColor3 = Theme.Surface
+            end)
+            b.MouseLeave:Connect(function()
+                b.TextColor3 = Theme.TextSecondary
+                b.BackgroundColor3 = Theme.Background
+            end)
         else
             b.BackgroundColor3 = Theme.SurfaceSecondary
             b.TextColor3 = Theme.Text
-            b.MouseEnter:Connect(function() Tween(b, { BackgroundColor3 = Theme.SurfaceHover }, 0.1) end)
-            b.MouseLeave:Connect(function() Tween(b, { BackgroundColor3 = Theme.SurfaceSecondary }, 0.1) end)
+            b.MouseEnter:Connect(function() b.BackgroundColor3 = Theme.SurfaceHover end)
+            b.MouseLeave:Connect(function() b.BackgroundColor3 = Theme.SurfaceSecondary end)
         end
         b.MouseButton1Click:Connect(function()
             if cb then task.spawn(function() pcall(cb) end) end
         end)
     end
 
-    W.Tabs[key] = { Btn = btn, Page = page, Key = key }
+    W.Tabs[key] = { Btn = btn, Page = page, Key = key, Scope = scope }
     local count = 0
     for _ in pairs(W.Tabs) do count += 1 end
-    if count == 1 then selectTab(key) end
+    if count == 1 then
+        W.ActiveScope = scope
+        paintScopeSegs()
+        selectTab(key)
+    elseif isNewScope and scope ~= "UNIVERSAL" then
+        -- Script game baru load: langsung tampilkan grup tab-nya
+        selectScope(scope)
+    end
     return T
 end
 
@@ -771,9 +915,25 @@ function W:RemoveTab(key)
     t.Btn:Destroy()
     t.Page:Destroy()
     W.Tabs[key] = nil
-    for k in pairs(W.Tabs) do
-        selectTab(k)
-        break
+    if W.LastTab[t.Scope] == key then W.LastTab[t.Scope] = nil end
+
+    local stillHas = false
+    for _, tt in pairs(W.Tabs) do
+        if tt.Scope == t.Scope then stillHas = true break end
+    end
+    if not stillHas then removeScope(t.Scope) end
+
+    if W.ActiveTab == key then
+        local scope = W.ActiveScope
+        local nextKey = W.LastTab[scope]
+        if nextKey and W.Tabs[nextKey] then
+            selectTab(nextKey)
+        elseif scope and W.ScopeSet[scope] then
+            selectScope(scope) -- tab pertama yang tersisa di scope ini
+        else
+            W.ActiveScope = nil
+            if W.Scopes[1] then selectScope(W.Scopes[1]) end
+        end
     end
 end
 
@@ -841,6 +1001,15 @@ end)
 
 local created = false
 
+-- Scope = grup tab di sidebar. Ambil dari Sub di Create:
+-- universal pakai Sub "Universal" -> UNIVERSAL, game script
+-- pakai Sub sendiri (mis. "Ride A Pet" -> RIDE A PET).
+local function scopeFor(opt)
+    local s = opt and opt.Sub
+    if type(s) == "string" and s ~= "" then return s:upper() end
+    return "UNIVERSAL"
+end
+
 function Lib.Create(opt)
     opt = opt or {}
     if created then
@@ -850,14 +1019,14 @@ function Lib.Create(opt)
         elseif opt.Sub then
             subLabel.Text = opt.Sub
         end
-        return setmetatable({}, { __index = W })
+        return setmetatable({ __scope = scopeFor(opt) }, { __index = W })
     end
     created = true
     if titleLabel then titleLabel.Text = opt.Title or "HUMANANOMALY" end
     subLabel.Text = opt.Sub or "Universal"
     W.Discord = opt.Discord or ""
     W.Folder = opt.Folder or ""
-    return setmetatable({}, { __index = W })
+    return setmetatable({ __scope = scopeFor(opt) }, { __index = W })
 end
 
 function Lib.Show() W:Show() end

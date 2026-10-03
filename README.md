@@ -24,7 +24,7 @@ Games/
   universal.lua       <- SEMUA game, selalu dimuat
   ride-a-pet.lua      <- Ride A Pet (otomasi game)
 Lib/
-  ha-ui.lua           <- HumanAnomaly UI v2
+  ha-ui.lua           <- HumanAnomaly UI v3.2 (monokrom, scope switch Universal/Game)
 test-local.lua        <- test tanpa GitHub (path lokal)
 ```
 
