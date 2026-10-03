@@ -1,8 +1,10 @@
 --========================================================--
---  HumanAnomaly Loader
---  1. UI library didownload sekali, dibagikan ke semua script
---  2. UNIVERSAL selalu jalan di semua game
---  3. Script khusus game jalan kalau GameId terdaftar
+--  HumanAnomaly Loader v3
+--  1. UI library is downloaded once and shared via getgenv
+--  2. UNIVERSAL always runs on every map (movement, visual,
+--     ESP, server, troll) — isolated UNIVERSAL scope
+--  3. Game scripts run only on their GameId — isolated game
+--     scope (e.g. RIDE A PET). Scopes are never mixed.
 --========================================================--
 
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -25,10 +27,10 @@ end
 local function get(url)
     local ok, body = pcall(function() return game:HttpGet(url) end)
     if not ok or type(body) ~= "string" or #body < 50 then
-        return nil, "download kosong/gagal"
+        return nil, "empty/failed download"
     end
     if body:sub(1, 1) == "<" then
-        return nil, "404: file belum di-push / branch bukan main / repo private"
+        return nil, "404: file not pushed yet / wrong branch / private repo"
     end
     return body, nil
 end
@@ -36,7 +38,7 @@ end
 local function run(src, label)
     local fn, loadErr = loadstring(src)
     if not fn then
-        notify("HumanAnomaly", "Syntax error di " .. label .. ": " .. tostring(loadErr))
+        notify("HumanAnomaly", "Syntax error in " .. label .. ": " .. tostring(loadErr))
         return false
     end
     local ok, runErr = pcall(fn)
@@ -47,30 +49,30 @@ local function run(src, label)
     return true
 end
 
-print("[HumanAnomaly] loader v2 | GameId:", game.GameId, "| PlaceId:", game.PlaceId)
+print("[HumanAnomaly] loader v3 | GameId:", game.GameId, "| PlaceId:", game.PlaceId)
 
--- 1. UI library: download sekali, share lewat getgenv
+-- 1. UI library: download once, share via getgenv (single window)
 if not getgenv().HA_UI_SRC then
     local libSrc, libErr = get(LIB)
     if not libSrc then
-        notify("HumanAnomaly", "UI lib gagal. " .. tostring(libErr) .. " | " .. LIB)
+        notify("HumanAnomaly", "UI library failed. " .. tostring(libErr) .. " | " .. LIB)
         return
     end
     getgenv().HA_UI_SRC = libSrc
 end
 
--- 2. Universal: selalu jalan, di semua game
+-- 2. Universal: always runs, on every map (UNIVERSAL scope)
 local uniSrc, uniErr = get(BASE .. "Games/universal.lua")
 if uniSrc then
     run(uniSrc, "universal.lua")
 else
-    notify("HumanAnomaly", "Universal gagal: " .. tostring(uniErr))
+    notify("HumanAnomaly", "Universal failed: " .. tostring(uniErr))
 end
 
--- 3. Script khusus game kalau didukung
+-- 3. Game script only when supported (separate scope, never mixed)
 local name = GAMES[game.GameId]
 if not name then
-    notify("HumanAnomaly", "Game ini belum didukung - Universal tetap aktif. (GameId " .. tostring(game.GameId) .. ")")
+    notify("HumanAnomaly", "This map is not supported yet — Universal stays active. (GameId " .. tostring(game.GameId) .. ")")
     return
 end
 

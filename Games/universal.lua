@@ -1,7 +1,8 @@
 --========================================================--
 --  HumanAnomaly | Universal
---  Jalan di SEMUA game. Selalu dimuat otomatis oleh Loader,
---  jendela game-specific (mis. Ride A Pet) muncul terpisah.
+--  Runs on EVERY game. Always loaded automatically by Loader.
+--  Player-only features: movement, visuals, ESP, server, troll.
+--  Game automation lives in its own script/scope, never mixed here.
 --========================================================--
 
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -18,7 +19,7 @@ local Workspace = game:GetService("Workspace")
 local LP = Players.LocalPlayer
 
 local BASE = "https://raw.githubusercontent.com/HumanAnomaly/Roblox-lua/main/"
--- Satu instance UI dibagikan ke semua script -> satu window
+-- One shared UI instance for all scripts -> single window, isolated scopes
 local UI = getgenv().HA_UI
 if not UI then
     if getgenv().HA_UI_SRC then
@@ -43,7 +44,7 @@ local U = {
 local Config, State, Options = U.Config, U.State, U.Options
 local V3, CF = Vector3.new, CFrame.new
 
-getgenv().HA_Universal = U -- dipakai script game untuk cek status troll
+getgenv().HA_Universal = U -- read by game scripts to pause farm while trolling
 
 function U:Connect(sig, fn)
     local c = sig:Connect(fn)
@@ -88,7 +89,7 @@ function U:PlayerNames()
         if p ~= LP then n[#n + 1] = p.Name end
     end
     table.sort(n)
-    if #n == 0 then n = { "Tidak ada pemain lain" } end
+    if #n == 0 then n = { "No other players" } end
     return n
 end
 
@@ -264,7 +265,7 @@ function U.Hop()
     TeleportService:Teleport(game.PlaceId, LP)
 end
 
---================ UI ================--
+--================ UI (UNIVERSAL scope only) ================--
 function U.BuildUI()
     local W = UI.Create({
         Title = "HUMANANOMALY",
@@ -276,7 +277,7 @@ function U.BuildUI()
 
     local home = W:Tab("Home")
     home:Section("Info")
-    home:Note("Universal aktif di semua game dan selalu dimuat otomatis oleh Loader. Script khusus game menambah tab sendiri di window ini.")
+    home:Note("Universal runs on every map and loads automatically. Game scripts add their own separate tabs in this window.")
     home:KV("GAME", function()
         local name = "?"
         pcall(function() name = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name end)
@@ -291,13 +292,13 @@ function U.BuildUI()
     end)
     home:KV("PLAYERS", function() return #Players:GetPlayers() .. " / " .. Players.MaxPlayers end)
     home:KV("FPS", function() return tostring(State.FPS) end)
-    home:Section("Kontrol")
-    home:Button("Join Discord", function()
+    home:Section("Controls")
+    home:Button("Copy Discord Invite", function()
         local cp = setclipboard or toclipboard
         if cp then pcall(cp, "https://discord.gg/NGBgETjmv3") end
-        UI.Notify("Discord", "Invite dicopy ke clipboard")
+        UI.Notify("Discord", "Invite copied to clipboard")
     end, "ghost")
-    home:Button("PANIC - Semua Off", function() W:FirePanic() end, "danger")
+    home:Button("PANIC - Turn Everything Off", function() W:FirePanic() end, "danger")
     W:OnPanic(function()
         for k in pairs(Options) do Options[k] = false end
         U.RestoreMovement(nil)
@@ -306,21 +307,21 @@ function U.BuildUI()
         if State.FovBackup then Workspace.CurrentCamera.FieldOfView = State.FovBackup end
     end)
 
-    local pl = W:Tab("Character")
+    local pl = W:Tab("Movement")
     pl:Section("Movement")
-    pl:Toggle("SpeedOn", "Speed", "Walkspeed custom", false, function(v) Options.SpeedOn = v if not v then U.RestoreMovement("SpeedOn") end end)
+    pl:Toggle("SpeedOn", "Speed", "Custom walkspeed", false, function(v) Options.SpeedOn = v if not v then U.RestoreMovement("SpeedOn") end end)
     pl:Slider("WalkSpeed", "Walk speed", 16, 300, Config.WalkSpeed, function(v) Options.WalkSpeed = v end)
-    pl:Toggle("JumpOn", "Jump Power", "Jump custom", false, function(v) Options.JumpOn = v if not v then U.RestoreMovement("JumpOn") end end)
+    pl:Toggle("JumpOn", "Jump Power", "Custom jump power", false, function(v) Options.JumpOn = v if not v then U.RestoreMovement("JumpOn") end end)
     pl:Slider("JumpPower", "Power", 50, 300, Config.JumpPower, function(v) Options.JumpPower = v end)
-    pl:Toggle("InfJump", "Infinite Jump", nil, false, function(v) Options.InfJump = v end)
+    pl:Toggle("InfJump", "Infinite Jump", "Jump again mid-air", false, function(v) Options.InfJump = v end)
     pl:Toggle("Fly", "Fly", "WASD + Space / Shift", false, function(v) Options.Fly = v if not v then U.RestoreMovement("Fly") end end)
     pl:Slider("FlySpeed", "Fly speed", 20, 500, Config.FlySpeed, function(v) Options.FlySpeed = v end)
-    pl:Toggle("NoClip", "Noclip", "Tembus tembok", false, function(v) Options.NoClip = v if not v then U.RestoreMovement("NoClip") end end)
-    pl:Toggle("ClickTp", "Click TP", "Klik kiri ke titik untuk teleport", false, function(v) Options.ClickTp = v end)
+    pl:Toggle("NoClip", "Noclip", "Walk through walls", false, function(v) Options.NoClip = v if not v then U.RestoreMovement("NoClip") end end)
+    pl:Toggle("ClickTp", "Click TP", "Left-click a point to teleport", false, function(v) Options.ClickTp = v end)
 
     local vis = W:Tab("Visual")
-    vis:Section("Dunia")
-    vis:Toggle("Fullbright", "Fullbright", "Terang merata, tanpa bayangan", false, function(v) U.SetFullbright(v) end)
+    vis:Section("World")
+    vis:Toggle("Fullbright", "Fullbright", "Even brightness, no shadows", false, function(v) U.SetFullbright(v) end)
     vis:Slider("Fov", "Field of View", 40, 120, 70, function(v)
         local cam2 = Workspace.CurrentCamera
         if not cam2 then return end
@@ -328,28 +329,28 @@ function U.BuildUI()
         cam2.FieldOfView = v
     end)
     vis:Section("ESP")
-    vis:Toggle("PlayerEsp", "Player ESP", "Nama + jarak tembus tembok", false, function(v) Options.PlayerEsp = v end)
+    vis:Toggle("PlayerEsp", "Player ESP", "Name + distance through walls", false, function(v) Options.PlayerEsp = v end)
 
     local srv = W:Tab("Server")
     srv:Section("Server")
-    srv:Toggle("AntiAfk", "Anti AFK", "Anti kick 20 menit idle", false, function(v) Options.AntiAfk = v end)
+    srv:Toggle("AntiAfk", "Anti AFK", "Prevents 20-min idle kick", false, function(v) Options.AntiAfk = v end)
     srv:Button("Unlock FPS (240)", function()
-        if setfpscap then pcall(setfpscap, 240) UI.Notify("Universal", "FPS cap 240") else UI.Notify("Universal", "Executor tidak support setfpscap") end
+        if setfpscap then pcall(setfpscap, 240) UI.Notify("Universal", "FPS cap set to 240") else UI.Notify("Universal", "Executor does not support setfpscap") end
     end, "accent")
     srv:Button("Rejoin", function() U.Rejoin() end)
     srv:Button("Server Hop", function() U.Hop() end)
 
     local ppl = W:Tab("Players")
-    ppl:Section("Pemain")
+    ppl:Section("Players")
     ppl:Dropdown("Player", "Target", U:PlayerNames(), nil, function(v) Options.Player = v end)
-    ppl:Button("Refresh Players", function() W:SetDropdown("Player", U:PlayerNames()) end)
-    ppl:Button("Teleport Ke Player", function()
+    ppl:Button("Refresh Player List", function() W:SetDropdown("Player", U:PlayerNames()) end)
+    ppl:Button("Teleport to Player", function()
         local r = U:TargetRoot(Options.Player)
         if r then U:MoveTo(r.CFrame + V3(0, 2.5, 0)) end
     end, "accent")
     ppl:Section("Troll")
     ppl:Dropdown("TrollTarget", "Target", U:PlayerNames(), nil, function(v) Options.TrollTarget = v end)
-    ppl:Toggle("Spectate", "Spectate", "Lihat dari kamera target", false, function(v)
+    ppl:Toggle("Spectate", "Spectate", "Watch through target camera", false, function(v)
         Options.Spectate = v
         local cam2 = Workspace.CurrentCamera
         if v then
@@ -360,8 +361,8 @@ function U.BuildUI()
             cam2.CameraSubject = U.Player.Humanoid
         end
     end)
-    ppl:Toggle("Fling", "Fling", "Matikan automasi saat aktif", false, function(v) Options.Fling = v if not v then U.StopFling() end end)
-    ppl:Toggle("Stick", "Stick", "Tempel ke target", false, function(v) Options.Stick = v end)
+    ppl:Toggle("Fling", "Fling", "Pauses automation while active", false, function(v) Options.Fling = v if not v then U.StopFling() end end)
+    ppl:Toggle("Stick", "Stick", "Stick to target", false, function(v) Options.Stick = v end)
 end
 
 --================ Boot ================--
@@ -420,8 +421,8 @@ function U:Boot()
         for _, c in ipairs(State.Connections) do c:Disconnect() end
         table.clear(State.Connections)
         if U.UIRef then
-            -- Lepas tab universal saja; window tetap untuk script game lain
-            for _, key in ipairs({ "Home", "Character", "Visual", "Server", "Players" }) do
+            -- Remove universal tabs only; keep the window for game scopes
+            for _, key in ipairs({ "Home", "Movement", "Visual", "Server", "Players" }) do
                 U.UIRef:RemoveTab(key)
             end
             if not next(U.UIRef.Tabs) then
@@ -434,7 +435,7 @@ function U:Boot()
 
     U.BuildUI()
     UI.Show()
-    UI.Notify("HA Universal", "Aktif di semua game. LeftCtrl / tombol HA.")
+    UI.Notify("HA Universal", "Active on every map. LeftCtrl / HA button.")
 end
 
 U:Boot()

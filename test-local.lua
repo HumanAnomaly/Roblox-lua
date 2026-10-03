@@ -1,15 +1,15 @@
--- Test lokal tanpa GitHub (urutan sama seperti Loader):
--- universal dulu, lalu script game. WAJIB dari dalam game Ride A Pet.
+-- Local test without GitHub (same order as Loader):
+-- universal first, then the game script. MUST run inside Ride A Pet.
 local ROOT = "C:/HumanAnomaly/WorkscpaceTEMP/asasa/"
 
 if not readfile then
-    error("Executor ini tidak support readfile - push ke GitHub atau copy file ke workspace executor.")
+    error("This executor does not support readfile - push to GitHub or copy the files to the executor workspace.")
 end
 
 local function readLocal(rel)
     local ok, body = pcall(readfile, ROOT .. rel)
     if ok and type(body) == "string" then return body end
-    return readfile(rel) -- fallback: file dicopy ke workspace executor
+    return readfile(rel) -- fallback: files copied to the executor workspace
 end
 
 getgenv().HA_UI_SRC = readLocal("Lib/ha-ui.lua")

@@ -1,9 +1,9 @@
 --========================================================--
 --  HumanAnomaly | Ride A Pet
---  Script khusus game Ride A Pet (GameId 10035204815).
---  Otomasi game: telur, sarang, pet, progres.
---  Fitur pemain umum (fly, speed, ESP player, server hop,
---  anti-AFK, troll) ada di jendela Universal.
+--  Game script for Ride A Pet (GameId 10035204815).
+--  Game automation only: eggs, nests, pets, progress.
+--  Player features (fly, speed, player ESP, server hop,
+--  anti-AFK, troll) live in the Universal scope, never mixed.
 --========================================================--
 
 local Players = game:GetService("Players")
@@ -16,12 +16,12 @@ local CoreGui = game:GetService("CoreGui")
 local LP = Players.LocalPlayer
 
 if game.GameId ~= 10035204815 then
-    LP:Kick("HumanAnomaly: script ini khusus Ride A Pet")
+    LP:Kick("HumanAnomaly: this script is only for Ride A Pet")
     return
 end
 
 local BASE = "https://raw.githubusercontent.com/HumanAnomaly/Roblox-lua/main/"
--- Satu instance UI dibagikan ke semua script -> satu window
+-- Shared UI instance -> single window, isolated scopes (UNIVERSAL vs RIDE A PET)
 local UI = getgenv().HA_UI
 if not UI then
     if getgenv().HA_UI_SRC then
@@ -72,7 +72,7 @@ local Clock = os.clock
 --================ Data game ================--
 local function Need(parent, name)
     local c = parent and parent:WaitForChild(name, 30)
-    if not c then error(Config.Tag .. " hilang: " .. tostring(name)) end
+    if not c then error(Config.Tag .. " missing: " .. tostring(name)) end
     return c
 end
 
@@ -136,7 +136,7 @@ end
 
 function HA:SetStatus(text) State.Status = text end
 
--- Farm otomatis berhenti saat troll universal (Fling/Stick) aktif
+-- Automation pauses while Universal troll (Fling/Stick) is active
 function HA:IsBusy()
     local u = getgenv().HA_Universal
     local o = u and u.Options
@@ -248,7 +248,7 @@ function HA.Player:IsAlive()
         and self.Root ~= nil and self.Root.Parent ~= nil
 end
 
---================ Telur (Farm) ================--
+--================ Eggs (Farm) ================--
 HA.Eggs = {}
 
 function HA.Eggs.Wanted(name)
@@ -265,7 +265,7 @@ function HA.Eggs.Wanted(name)
     return info.Luck >= (o.MinLuck or 0)
 end
 
--- Saat tas penuh: hanya ambil telur yang lebih baik dari isi tas
+-- When the bag is full: only pick eggs better than the bag contents
 function HA.Eggs.StockFloor()
     local tools = HA.Hatch.BackpackEggs()
     if #tools < Config.EggStock then return 0 end
@@ -338,11 +338,11 @@ function HA.Eggs.Run()
     for _, egg in ipairs(HA.Eggs.OnMap()) do
         if not State.Alive or not HA.Player:IsAlive() or HA:IsBusy() then break end
         if not egg.Parent then continue end
-        HA:SetStatus("Ambil " .. egg:GetAttribute("Egg"))
+        HA:SetStatus("Collecting " .. egg:GetAttribute("Egg"))
         if HA.Eggs.Grab(egg) then got += 1 end
         if HA:BasketCount() >= cap and not HA.Eggs.Deliver() then
             State.DeliverFailUntil = Clock() + Config.DeliverBackoff
-            HA:SetStatus("Pengantaran ditolak, coba lagi nanti")
+            HA:SetStatus("Delivery rejected, retrying later")
             break
         end
     end
@@ -353,7 +353,7 @@ function HA.Eggs.Run()
     State.EggsCollected += got
     if Options.ReturnAfter and got > 0 then HA:MoveTo(origin) end
     if Clock() > State.DeliverFailUntil then
-        HA:SetStatus(got > 0 and ("Terkumpul " .. got .. " telur") or "Menunggu telur")
+        HA:SetStatus(got > 0 and ("Collected " .. got .. " eggs") or "Waiting for eggs")
     end
     return got
 end
@@ -368,15 +368,15 @@ function HA.Eggs.Step()
     end
     State.EmptySince = State.EmptySince or Clock()
     if not Options.EggHunter then
-        HA:SetStatus("Menunggu telur")
+        HA:SetStatus("Waiting for eggs")
         return
     end
     local left = Config.HuntHopAfter - (Clock() - State.EmptySince)
-    HA:SetStatus(("Egg Radar: kosong, pindah server %ds"):format(math.max(0, math.ceil(left))))
+    HA:SetStatus(("Egg Radar: empty, hopping in %ds"):format(math.max(0, math.ceil(left))))
     if left <= 0 and not State.Hopping then HA.Server.RadarHop() end
 end
 
---================ Sarang (Hatchery) ================--
+--================ Nests (Hatchery) ================--
 HA.Hatch = {}
 
 function HA.Hatch.BackpackEggs()
@@ -445,7 +445,7 @@ function HA.Hatch.Place()
     for _, nest in ipairs(nests) do
         local tool = table.remove(tools, 1)
         if not tool or not HA.Player:IsAlive() then break end
-        HA:SetStatus("Taruh " .. tool.Name)
+        HA:SetStatus("Placing " .. tool.Name)
         HA:MoveTo(nest:GetPivot() + V3(0, Config.NestHover, 0))
         task.wait(Config.TeleportSettle)
         HA.Player.Humanoid:EquipTool(tool)
@@ -610,7 +610,7 @@ function HA.Ranch.Step()
     end
 end
 
---================ Progres ================--
+--================ Progress ================--
 HA.Progress = {}
 
 function HA.Progress.RebirthCost()
@@ -629,7 +629,7 @@ function HA.Progress.RebirthNow()
     task.delay(3, function()
         if HA:RebirthCount() == before then
             State.RebirthBlockedUntil = Clock() + Config.RebirthBackoff
-            HA:SetStatus("Rebirth ditolak (kurang pet?)")
+            HA:SetStatus("Rebirth rejected (need more pets?)")
         end
     end)
 end
@@ -658,7 +658,7 @@ function HA.Progress.Step()
         end
     end
     if Options.AutoUpgrade and now - State.LastUpgrade > Config.UpgradeGap then
-        -- Save For Rebirth: tahan upgrade kalau uang masih dipatok untuk rebirth
+        -- Save For Rebirth: hold upgrades while cash is reserved for rebirth
         local saving = Options.SaveForRebirth and State.NextRebirthCost < math.huge
             and HA:Cash() < State.NextRebirthCost * Config.RebirthReserve
         if not saving then
@@ -700,7 +700,7 @@ function HA.Server.RadarHop()
         State.HuntHops = 0
         Options.EggHunter = false
         if HA.UIRef then HA.UIRef:SetToggle("EggHunter", false) end
-        UI.Notify("Egg Radar", ("Tidak ketemu setelah %d server, radar dimatikan"):format(Config.HuntMaxHops))
+        UI.Notify("Egg Radar", ("No match after %d servers, radar turned off"):format(Config.HuntMaxHops))
         return
     end
     local queue = queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
@@ -715,14 +715,14 @@ function HA.Server.RadarHop()
     pcall(HA.Server.Hop)
 end
 
---================ Tempat ================--
+--================ Places ================--
 HA.Places = {}
 
 function HA.Places.List()
-    local places = { ["Kandang (Plot)"] = function() return HA:HomeCFrame() end }
+    local places = { ["Home (Plot)"] = function() return HA:HomeCFrame() end }
     local stalls = Workspace:FindFirstChild("Stalls")
     for _, s in ipairs(stalls and stalls:GetChildren() or {}) do
-        places["Toko: " .. s.Name] = function() return s:GetPivot() + V3(0, Config.HomeHover, 0) end
+        places["Shop: " .. s.Name] = function() return s:GetPivot() + V3(0, Config.HomeHover, 0) end
     end
     local volcano = Workspace:FindFirstChild("Volcano")
     for _, spot in ipairs({ "VolcanoEntrance", "VolcanoTop" }) do
@@ -739,7 +739,7 @@ function HA.Places.Names()
     return n
 end
 
---================ ESP telur ================--
+--================ Egg ESP ================--
 HA.Esp = {}
 
 function HA.Esp.Clear()
@@ -794,7 +794,7 @@ function HA.Esp.Refresh()
     end
 end
 
---================ UI ================--
+--================ UI (RIDE A PET scope only) ================--
 function HA.BuildUI()
     local W = UI.Create({
         Title = "HUMANANOMALY",
@@ -805,74 +805,74 @@ function HA.BuildUI()
     HA.UIRef = W
 
     local home = W:Tab("Auto")
-    home:Section("Otomasi")
-    home:Toggle("Autopilot", "Autopilot", "Nyalakan semua automasi sekaligus", false, function(on)
+    home:Section("Automation")
+    home:Toggle("Autopilot", "Autopilot", "Enable all automation at once", false, function(on)
         for _, k in ipairs({ "AutoEggs", "SwapSmarter", "AutoPlaceEggs", "AutoHatch", "AutoEquipBest", "AutoCollectCash", "AutoFeed", "AutoUpgrade", "SaveForRebirth", "AutoRebirth", "AutoNests", "AutoClaim" }) do
             Options[k] = on
             W:SetToggle(k, on)
         end
     end)
-    home:Toggle("SaveForRebirth", "Save For Rebirth", "Tahan upgrade kalau uang dipatok rebirth", false, function(v) Options.SaveForRebirth = v end)
-    home:Button("PANIC - Semua Off", function() W:FirePanic() end, "danger")
+    home:Toggle("SaveForRebirth", "Save For Rebirth", "Hold upgrades while saving for rebirth", false, function(v) Options.SaveForRebirth = v end)
+    home:Button("PANIC - Turn Everything Off", function() W:FirePanic() end, "danger")
     W:OnPanic(function()
         for k in pairs(Options) do Options[k] = false end
     end)
     home:Section("Status")
     home:KV("STATUS", function()
-        local saving = (Options.SaveForRebirth and State.NextRebirthCost < math.huge) and " (hemat)" or ""
+        local saving = (Options.SaveForRebirth and State.NextRebirthCost < math.huge) and " (saving)" or ""
         return State.Status .. saving
     end)
     home:KV("CASH", function() return HA.FormatNumber(HA:Cash()) end)
     home:KV("REBIRTH", function() return tostring(HA:RebirthCount()) end)
-    home:KV("TELUR", function() return State.EggsCollected .. " terkumpul | " .. #HA.Eggs.OnMap() .. " di map" end)
-    home:Note("Fitur pemain (fly, speed, ESP, anti-AFK, troll, server hop) ada di tab CHARACTER / VISUAL / SERVER / PLAYERS di window yang sama.")
+    home:KV("EGGS", function() return State.EggsCollected .. " collected | " .. #HA.Eggs.OnMap() .. " on map" end)
+    home:Note("Player features (fly, speed, ESP, anti-AFK, troll, server hop) are under MOVEMENT / VISUAL / SERVER / PLAYERS in the Universal scope.")
 
     local eggs = W:Tab("Eggs")
-    eggs:Section("Kumpul")
-    eggs:Toggle("AutoEggs", "Auto Collect", "Ambil telur yang lolos filter, antar ke rumah", false, function(v) Options.AutoEggs = v end)
-    eggs:Toggle("SwapSmarter", "Swap Smarter", "Tas penuh: hanya ambil yang lebih baik", false, function(v) Options.SwapSmarter = v end)
-    eggs:Toggle("ReturnAfter", "Balik Ke Titik", "Teleport balik setelah selesai", false, function(v) Options.ReturnAfter = v end)
+    eggs:Section("Collect")
+    eggs:Toggle("AutoEggs", "Auto Collect", "Pick filtered eggs, deliver to home", false, function(v) Options.AutoEggs = v end)
+    eggs:Toggle("SwapSmarter", "Swap Smarter", "When full: only pick better eggs", false, function(v) Options.SwapSmarter = v end)
+    eggs:Toggle("ReturnAfter", "Return To Spot", "Teleport back when finished", false, function(v) Options.ReturnAfter = v end)
     eggs:Slider("MinLuck", "Min luck (1 in X)", 0, 1000000, 0, function(v) Options.MinLuck = v end)
-    eggs:Button("Ambil Telur Terbaik", function()
+    eggs:Button("Grab Best Egg", function()
         local e = HA.Eggs.OnMap()[1]
         if e then HA:MoveTo(CF(e:GetAttribute("Position") + V3(0, Config.EggHover, 0))) end
     end)
     eggs:Section("Egg Radar")
-    eggs:Toggle("EggHunter", "Egg Radar", "Fokus rarity tinggi, otomatis pindah server", false, function(v) Options.EggHunter = v end)
+    eggs:Toggle("EggHunter", "Egg Radar", "Focus high rarity, auto-hop servers", false, function(v) Options.EggHunter = v end)
     eggs:Dropdown("HuntMinRarity", "Min rarity", HA.Rarities, "Mythic", function(v) Options.HuntMinRarity = v end)
     eggs:Label(function() return ("Radar: server %d/%d"):format(State.HuntHops, Config.HuntMaxHops) end)
 
     local nest = W:Tab("Nests")
-    nest:Section("Penetasan")
-    nest:Toggle("AutoPlaceEggs", "Auto Place", "Taruh telur terbaik ke sarang kosong", false, function(v) Options.AutoPlaceEggs = v end)
-    nest:Toggle("FastestFirst", "Cepat Dulu", "Off = pilih luck tertinggi dulu", false, function(v) Options.FastestFirst = v end)
-    nest:Toggle("AutoHatch", "Auto Hatch", "Menetaskan dari mana saja saat siap", false, function(v) Options.AutoHatch = v end)
-    nest:Button("Taruh Telur Sekarang", function() HA:WithLock("place", Config.LockWait, HA.Hatch.Place) end)
-    nest:Button("Hatch Sekarang", function() HA.Hatch.HatchNow(true) end)
-    nest:Section("Sarang")
-    nest:Toggle("AutoNests", "Auto Beli Sarang", "Buka sarang baru saat mampu", false, function(v) Options.AutoNests = v end)
+    nest:Section("Hatching")
+    nest:Toggle("AutoPlaceEggs", "Auto Place", "Place best eggs into empty nests", false, function(v) Options.AutoPlaceEggs = v end)
+    nest:Toggle("FastestFirst", "Fastest First", "Off = highest luck first", false, function(v) Options.FastestFirst = v end)
+    nest:Toggle("AutoHatch", "Auto Hatch", "Hatch from anywhere when ready", false, function(v) Options.AutoHatch = v end)
+    nest:Button("Place Eggs Now", function() HA:WithLock("place", Config.LockWait, HA.Hatch.Place) end)
+    nest:Button("Hatch Now", function() HA.Hatch.HatchNow(true) end)
+    nest:Section("Nests")
+    nest:Toggle("AutoNests", "Auto Buy Nests", "Unlock new nests when affordable", false, function(v) Options.AutoNests = v end)
 
     local ranch = W:Tab("Ranch")
-    ranch:Section("Kandang")
-    ranch:Toggle("AutoEquipBest", "Auto Ranch", "Kandang selalu diisi penghasil terbaik", false, function(v) Options.AutoEquipBest = v end)
-    ranch:Toggle("AutoCollectCash", "Auto Cash", "Tarik uang pet dari mana saja", false, function(v) Options.AutoCollectCash = v end)
-    ranch:Button("Taruh Terbaik Sekarang", function() HA:WithLock("ranch", Config.LockWait, HA.Ranch.PlaceBest) end)
-    ranch:Button("Tarik Cash Sekarang", function() HA.Ranch.CollectNow() end)
-    ranch:Section("Pakan")
-    ranch:Toggle("AutoFeed", "Auto Feed", "Beri makan pet terbaik dulu", false, function(v) Options.AutoFeed = v end)
+    ranch:Section("Ranch")
+    ranch:Toggle("AutoEquipBest", "Auto Ranch", "Keep ranch filled with best earners", false, function(v) Options.AutoEquipBest = v end)
+    ranch:Toggle("AutoCollectCash", "Auto Cash", "Collect pet cash from anywhere", false, function(v) Options.AutoCollectCash = v end)
+    ranch:Button("Place Best Now", function() HA:WithLock("ranch", Config.LockWait, HA.Ranch.PlaceBest) end)
+    ranch:Button("Collect Cash Now", function() HA.Ranch.CollectNow() end)
+    ranch:Section("Feeding")
+    ranch:Toggle("AutoFeed", "Auto Feed", "Feed best pets first", false, function(v) Options.AutoFeed = v end)
 
     local prog = W:Tab("Progress")
-    prog:Section("Naik")
-    prog:Toggle("AutoUpgrade", "Auto Upgrade", "Beli semua upgrade luck yang mampu", false, function(v) Options.AutoUpgrade = v end)
-    prog:Toggle("AutoRebirth", "Auto Rebirth", "Rebirth saat uang dan pet cukup", false, function(v) Options.AutoRebirth = v end)
-    prog:Toggle("AutoClaim", "Auto Claim", "Hadiah index dan offline", false, function(v) Options.AutoClaim = v end)
+    prog:Section("Progress")
+    prog:Toggle("AutoUpgrade", "Auto Upgrade", "Buy every affordable luck upgrade", false, function(v) Options.AutoUpgrade = v end)
+    prog:Toggle("AutoRebirth", "Auto Rebirth", "Rebirth when cash and pets allow", false, function(v) Options.AutoRebirth = v end)
+    prog:Toggle("AutoClaim", "Auto Claim", "Index and offline rewards", false, function(v) Options.AutoClaim = v end)
     prog:Button("Upgrade Max", function() HA.Net.Upgrades:FireServer("Max") end)
-    prog:Button("Rebirth Sekarang", function() HA.Progress.RebirthNow() end)
-    prog:Button("Claim Sekarang", function() HA.Net.ClaimIndexReward:FireServer() HA.Net.OfflineEarnings:FireServer() end)
+    prog:Button("Rebirth Now", function() HA.Progress.RebirthNow() end)
+    prog:Button("Claim Now", function() HA.Net.ClaimIndexReward:FireServer() HA.Net.OfflineEarnings:FireServer() end)
 
     local places = W:Tab("Places")
     places:Section("Teleport")
-    places:Dropdown("TPPlace", "Tujuan", HA.Places.Names(), HA.Places.Names()[1], function(v) Options.TPPlace = v end)
+    places:Dropdown("TPPlace", "Destination", HA.Places.Names(), HA.Places.Names()[1], function(v) Options.TPPlace = v end)
     places:Button("Teleport", function()
         local target = HA.Places.List()[Options.TPPlace or ""]
         if target then HA:MoveTo(target()) end
@@ -911,7 +911,7 @@ function HA:Boot()
         for _, c in ipairs(State.Connections) do c:Disconnect() end
         table.clear(State.Connections)
         if HA.UIRef then
-            -- Lepas tab game saja; window tetap untuk universal
+            -- Remove game tabs only; keep the window for Universal
             for _, key in ipairs({ "Auto", "Eggs", "Nests", "Ranch", "Progress", "Places" }) do
                 HA.UIRef:RemoveTab(key)
             end
@@ -925,9 +925,9 @@ function HA:Boot()
     HA.BuildUI()
     UI.Show()
     HA.UIRef:SetStatus("READY", true)
-    UI.Notify("HumanAnomaly", "Ride A Pet siap. LeftCtrl / tombol HA.")
+    UI.Notify("HumanAnomaly", "Ride A Pet ready. LeftCtrl / HA button.")
 
-    -- Lanjutan Egg Radar setelah pindah server
+    -- Resume Egg Radar after server hop
     local hunt = getgenv().HAHunt
     getgenv().HAHunt = nil
     if type(hunt) == "table" then
