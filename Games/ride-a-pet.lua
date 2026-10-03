@@ -21,11 +21,15 @@ if game.GameId ~= 10035204815 then
 end
 
 local BASE = "https://raw.githubusercontent.com/HumanAnomaly/Roblox-lua/main/"
-local UI
-if getgenv and getgenv().HA_UI_SRC then
-    UI = loadstring(getgenv().HA_UI_SRC)()
-else
-    UI = loadstring(game:HttpGet(BASE .. "Lib/ha-ui.lua"))()
+-- Satu instance UI dibagikan ke semua script -> satu window
+local UI = getgenv().HA_UI
+if not UI then
+    if getgenv().HA_UI_SRC then
+        UI = loadstring(getgenv().HA_UI_SRC)()
+    else
+        UI = loadstring(game:HttpGet(BASE .. "Lib/ha-ui.lua"))()
+    end
+    getgenv().HA_UI = UI
 end
 
 local HA = {
@@ -800,7 +804,7 @@ function HA.BuildUI()
     })
     HA.UIRef = W
 
-    local home = W:Tab("Home")
+    local home = W:Tab("Auto")
     home:Section("Otomasi")
     home:Toggle("Autopilot", "Autopilot", "Nyalakan semua automasi sekaligus", false, function(on)
         for _, k in ipairs({ "AutoEggs", "SwapSmarter", "AutoPlaceEggs", "AutoHatch", "AutoEquipBest", "AutoCollectCash", "AutoFeed", "AutoUpgrade", "SaveForRebirth", "AutoRebirth", "AutoNests", "AutoClaim" }) do
@@ -809,19 +813,19 @@ function HA.BuildUI()
         end
     end)
     home:Toggle("SaveForRebirth", "Save For Rebirth", "Tahan upgrade kalau uang dipatok rebirth", false, function(v) Options.SaveForRebirth = v end)
-    home:Button("Panic - Semua Off", function()
+    home:Button("PANIC - Semua Off", function() W:FirePanic() end, "danger")
+    W:OnPanic(function()
         for k in pairs(Options) do Options[k] = false end
-        W:ResetAll()
-        W:SetStatus("IDLE", true)
-    end, "danger")
-    home:Section("Status Live")
-    home:Label(function()
-        local saving = (Options.SaveForRebirth and State.NextRebirthCost < math.huge) and " (hemat)" or ""
-        return "Status: " .. State.Status .. saving
     end)
-    home:Label(function() return "Cash: " .. HA.FormatNumber(HA:Cash()) .. " | Rebirth: " .. HA:RebirthCount() end)
-    home:Label(function() return "Telur terkumpul: " .. State.EggsCollected .. " | Di map: " .. #HA.Eggs.OnMap() end)
-    home:Note("Fitur pemain (fly, speed, ESP player, anti-AFK, troll, server hop) ada di jendela UNIVERSAL di sebelah kiri.")
+    home:Section("Status")
+    home:KV("STATUS", function()
+        local saving = (Options.SaveForRebirth and State.NextRebirthCost < math.huge) and " (hemat)" or ""
+        return State.Status .. saving
+    end)
+    home:KV("CASH", function() return HA.FormatNumber(HA:Cash()) end)
+    home:KV("REBIRTH", function() return tostring(HA:RebirthCount()) end)
+    home:KV("TELUR", function() return State.EggsCollected .. " terkumpul | " .. #HA.Eggs.OnMap() .. " di map" end)
+    home:Note("Fitur pemain (fly, speed, ESP, anti-AFK, troll, server hop) ada di tab CHARACTER / VISUAL / SERVER / PLAYERS di window yang sama.")
 
     local eggs = W:Tab("Eggs")
     eggs:Section("Kumpul")
@@ -906,7 +910,16 @@ function HA:Boot()
         HA.Esp.Clear()
         for _, c in ipairs(State.Connections) do c:Disconnect() end
         table.clear(State.Connections)
-        if HA.UIRef then HA.UIRef:Destroy() end
+        if HA.UIRef then
+            -- Lepas tab game saja; window tetap untuk universal
+            for _, key in ipairs({ "Auto", "Eggs", "Nests", "Ranch", "Progress", "Places" }) do
+                HA.UIRef:RemoveTab(key)
+            end
+            if not next(HA.UIRef.Tabs) then
+                HA.UIRef:Destroy()
+                getgenv().HA_UI = nil
+            end
+        end
     end
 
     HA.BuildUI()

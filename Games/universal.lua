@@ -18,11 +18,15 @@ local Workspace = game:GetService("Workspace")
 local LP = Players.LocalPlayer
 
 local BASE = "https://raw.githubusercontent.com/HumanAnomaly/Roblox-lua/main/"
-local UI
-if getgenv and getgenv().HA_UI_SRC then
-    UI = loadstring(getgenv().HA_UI_SRC)()
-else
-    UI = loadstring(game:HttpGet(BASE .. "Lib/ha-ui.lua"))()
+-- Satu instance UI dibagikan ke semua script -> satu window
+local UI = getgenv().HA_UI
+if not UI then
+    if getgenv().HA_UI_SRC then
+        UI = loadstring(getgenv().HA_UI_SRC)()
+    else
+        UI = loadstring(game:HttpGet(BASE .. "Lib/ha-ui.lua"))()
+    end
+    getgenv().HA_UI = UI
 end
 
 local U = {
@@ -264,33 +268,43 @@ end
 function U.BuildUI()
     local W = UI.Create({
         Title = "HUMANANOMALY",
-        Sub = "Universal - All Games",
+        Sub = "Universal",
         Discord = "https://discord.gg/NGBgETjmv3",
         Folder = "HumanAnomaly/Universal",
-        Position = UDim2.new(0, 24, 0.5, -222),
     })
     U.UIRef = W
 
     local home = W:Tab("Home")
     home:Section("Info")
-    home:Note("UNIVERSAL - jalan di semua game dan SELALU dimuat otomatis oleh Loader. Script khusus game (kalau ada) muncul di jendela terpisah di tengah layar.")
-    home:Label(function()
+    home:Note("Universal aktif di semua game dan selalu dimuat otomatis oleh Loader. Script khusus game menambah tab sendiri di window ini.")
+    home:KV("GAME", function()
         local name = "?"
         pcall(function() name = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name end)
+        return name
+    end)
+    home:KV("PLACE", function() return tostring(game.PlaceId) end)
+    home:KV("JOB", function() return game.JobId:sub(1, 8) .. "..." end)
+    home:KV("EXECUTOR", function()
         local exec = "?"
         pcall(function() exec = identifyexecutor() end)
-        return ("Game: %s\nPlaceId: %d | Job: %s\nExecutor: %s\nPlayers: %d/%d | FPS: %d"):format(
-            name, game.PlaceId, game.JobId:sub(1, 8), exec, #Players:GetPlayers(), Players.MaxPlayers, State.FPS)
+        return exec
     end)
-    home:Button("Panic - All Off", function()
+    home:KV("PLAYERS", function() return #Players:GetPlayers() .. " / " .. Players.MaxPlayers end)
+    home:KV("FPS", function() return tostring(State.FPS) end)
+    home:Section("Kontrol")
+    home:Button("Join Discord", function()
+        local cp = setclipboard or toclipboard
+        if cp then pcall(cp, "https://discord.gg/NGBgETjmv3") end
+        UI.Notify("Discord", "Invite dicopy ke clipboard")
+    end, "ghost")
+    home:Button("PANIC - Semua Off", function() W:FirePanic() end, "danger")
+    W:OnPanic(function()
         for k in pairs(Options) do Options[k] = false end
-        W:ResetAll()
         U.RestoreMovement(nil)
         U.SetFullbright(false)
         if U.Player.Humanoid then Workspace.CurrentCamera.CameraSubject = U.Player.Humanoid end
         if State.FovBackup then Workspace.CurrentCamera.FieldOfView = State.FovBackup end
-        W:SetStatus("IDLE", true)
-    end, "danger")
+    end)
 
     local pl = W:Tab("Character")
     pl:Section("Movement")
@@ -405,7 +419,16 @@ function U:Boot()
         if U.Player.Humanoid then Workspace.CurrentCamera.CameraSubject = U.Player.Humanoid end
         for _, c in ipairs(State.Connections) do c:Disconnect() end
         table.clear(State.Connections)
-        if U.UIRef then U.UIRef:Destroy() end
+        if U.UIRef then
+            -- Lepas tab universal saja; window tetap untuk script game lain
+            for _, key in ipairs({ "Home", "Character", "Visual", "Server", "Players" }) do
+                U.UIRef:RemoveTab(key)
+            end
+            if not next(U.UIRef.Tabs) then
+                U.UIRef:Destroy()
+                getgenv().HA_UI = nil
+            end
+        end
         getgenv().HA_Universal = nil
     end
 
